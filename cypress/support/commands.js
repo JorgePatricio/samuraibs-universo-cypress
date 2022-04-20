@@ -24,6 +24,16 @@
 // -- This will overwrite an existing command --
 // Cypress.Commands.overwrite('visit', (originalFn, url, options) => { ... })
 import moment from 'moment'
+import { apiServer } from '../../cypress.json'
+import loginPage from './pages/login'
+import dashPage from './pages/dash'
+
+Cypress.Commands.add('uiLogin', function (user) {
+	loginPage.go()
+	loginPage.form(user)
+	loginPage.submit()
+	dashPage.header.userLoggedIn(user.name)
+})
 
 Cypress.Commands.add('postUser', function (user) {
 	cy.task('removeUser', user.email)
@@ -31,28 +41,28 @@ Cypress.Commands.add('postUser', function (user) {
 			console.log(result)
 		})
 
-	cy.request(
-		'POST',
-		'http://localhost:3333/users',
-		user
-	).then(function (response) {
+	cy.request({
+		method: 'POST',
+		url: apiServer + '/users',
+		body: user
+	}).then(function (response) {
 		expect(response.status).to.eq(200)
 	})
 })
 
 Cypress.Commands.add('recoveryPass', function (email) {
-	cy.request(
-		'POST',
-		'http://localhost:3333/password/forgot',
-		{ email: email }
-	).then(function (response) {
+	cy.request({
+		method: 'POST',
+		url: apiServer + '/password/forgot',
+		body: { email: email }
+	}).then(function (response) {
 		expect(response.status).to.eq(204)
 
 		cy.task('findToken', email)
-		.then(function(result){
-			console.log(result.token)
-			Cypress.env('recoveryToken', result.token)
-		})
+			.then(function (result) {
+				console.log(result.token)
+				Cypress.env('recoveryToken', result.token)
+			})
 	})
 })
 
@@ -61,9 +71,9 @@ Cypress.Commands.add('createAppointment', function (hour) {
 	let now = new Date()
 	now.setDate(now.getDate() + 1)
 
-	Cypress.env('appointmentDay', now.getDate())
+	Cypress.env('appointmentDate', now)
 
-	const date = moment(now).format('YYYY-MM-DD ' + hour + ':00')
+	const date = moment(now).format(`YYYY-MM-DD ${hour}:00`)
 
 	const payload = {
 		provider_id: Cypress.env('providerId'),
@@ -72,7 +82,7 @@ Cypress.Commands.add('createAppointment', function (hour) {
 
 	cy.request({
 		method: 'POST',
-		url: 'http://localhost:3333/appointments',
+		url: apiServer + '/appointments',
 		body: payload,
 		headers: {
 			authorization: 'Bearer ' + Cypress.env('apiToken')
@@ -87,7 +97,7 @@ Cypress.Commands.add('setProviderId', function (providerEmail) {
 
 	cy.request({
 		method: 'GET',
-		url: 'http://localhost:3333/providers',
+		url: apiServer + '/providers',
 		headers: {
 			authorization: 'Bearer ' + Cypress.env('apiToken')
 		}
@@ -104,7 +114,7 @@ Cypress.Commands.add('setProviderId', function (providerEmail) {
 	})
 })
 
-Cypress.Commands.add('apiLogin', function (user) {
+Cypress.Commands.add('apiLogin', function (user, setLocalStorage = false) {
 
 	const payload = {
 		email: user.email,
@@ -113,10 +123,20 @@ Cypress.Commands.add('apiLogin', function (user) {
 
 	cy.request({
 		method: 'POST',
-		url: 'http://localhost:3333/sessions',
+		url: apiServer + '/sessions',
 		body: payload
 	}).then(function (response) {
 		expect(response.status).to.eq(200)
 		Cypress.env('apiToken', response.body.token)
+
+		if (setLocalStorage) {
+			const { token, user } = response.body
+
+			window.localStorage.setItem('@Samurai:token', token)
+			window.localStorage.setItem('@Samurai:user', JSON.stringify(user))
+		}
+
 	})
+
+	if (setLocalStorage) cy.visit('/dashboard')
 })
